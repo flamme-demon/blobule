@@ -15,8 +15,33 @@
       conns: new Map(),        // peerId -> DataConnection
       botIds: [],
       inviteId: null,
+      _lastCast: 0,
+      // Appelé par la boucle de jeu (pilotée par un Worker, donc jamais
+      // suspendue en arrière-plan). Se limite tout seul à ~15 envois/s.
+      broadcast() {
+        const now = Date.now();
+        if (now - host._lastCast < C.NET_MS) return;
+        host._lastCast = now;
+        // détection des invités silencieux : la fermeture WebRTC peut mettre
+        // >10 s à être signalée, or les invités envoient leurs entrées
+        // ~15 fois/s — 5 s de silence = parti
+        for (const conn of [...host.conns.values()]) {
+          if (now - conn._lastSeen > 5000) {
+            try { conn.close(); } catch (_) { /* déjà fermée */ }
+            dropGuest(conn.peer);
+          }
+        }
+        // snapshot() draine les diffs de nourriture : on l'appelle même sans
+        // invité pour qu'un nouvel arrivant ne reçoive pas un vieux backlog
+        const snap = world.snapshot();
+        if (host.conns.size === 0) return;
+        for (const conn of host.conns.values()) {
+          if (conn.open) {
+            try { conn.send(snap); } catch (_) { /* connexion en cours de fermeture */ }
+          }
+        }
+      },
       destroy() {
-        clearInterval(host._timer);
         if (host.peer) host.peer.destroy();
       },
     };
@@ -99,26 +124,6 @@
         callbacks.onPlayersChanged();
       }
     }
-
-    // diffusion de l'état + détection des invités silencieux (la fermeture
-    // WebRTC peut mettre >10 s à être signalée ; les invités envoient leurs
-    // entrées ~15 fois/s, donc 5 s de silence = parti)
-    host._timer = setInterval(() => {
-      if (host.conns.size === 0) return;
-      const now = Date.now();
-      for (const conn of [...host.conns.values()]) {
-        if (now - conn._lastSeen > 5000) {
-          try { conn.close(); } catch (_) { /* déjà fermée */ }
-          dropGuest(conn.peer);
-        }
-      }
-      const snap = world.snapshot();
-      for (const conn of host.conns.values()) {
-        if (conn.open) {
-          try { conn.send(snap); } catch (_) { /* connexion en cours de fermeture */ }
-        }
-      }
-    }, C.NET_MS);
 
     return host;
   }

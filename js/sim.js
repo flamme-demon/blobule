@@ -158,8 +158,13 @@
     tick(dtMs) {
       const dt = dtMs / 1000;
       this.time += dtMs;
-      this.pelletsAdded = [];
-      this.pelletsRemoved = [];
+      // Les diffs de nourriture s'accumulent sur plusieurs ticks et sont
+      // drainés par snapshot() à chaque envoi réseau. Garde-fou pour le
+      // solo hors-ligne, où personne ne les consomme :
+      if (this.pelletsAdded.length > 2000 || this.pelletsRemoved.length > 2000) {
+        this.pelletsAdded = [];
+        this.pelletsRemoved = [];
+      }
 
       for (const p of this.players.values()) {
         if (p.dead) {
@@ -438,11 +443,16 @@
           })),
         });
       }
+      // draine les diffs de nourriture : ils couvrent tout ce qui s'est
+      // passé depuis le snapshot précédent
+      const pa = this.pelletsAdded, pr = this.pelletsRemoved;
+      this.pelletsAdded = [];
+      this.pelletsRemoved = [];
       return {
         t: 'state',
         players,
-        pa: this.pelletsAdded,
-        pr: this.pelletsRemoved,
+        pa,
+        pr,
         ej: [...this.ejected.values()].map((e) => ({ x: Math.round(e.x), y: Math.round(e.y), c: e.c })),
         vi: [...this.viruses.values()].map((v) => ({ x: Math.round(v.x), y: Math.round(v.y), m: Math.round(v.m) })),
         lb: this.leaderboard(),

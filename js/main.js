@@ -39,6 +39,7 @@
     wasAlive: false,
     lastScore: 0,
   };
+  window.__remote = remote; // accès console pour déboguer (mode invité)
 
   // ---- entrées ----
   window.addEventListener('mousemove', (e) => {
@@ -103,7 +104,9 @@
     ui.death.classList.add('hidden');
     running = true;
     lastFrame = performance.now();
+    lastStep = lastFrame;
     accumulator = 0;
+    netTimer = 0;
     if (!rafId) rafId = requestAnimationFrame(frame);
   }
 
@@ -179,26 +182,57 @@
   }
 
   // ---- boucle de jeu ----
+  // La simulation et le réseau sont avancés par step(), appelée à la fois
+  // par requestAnimationFrame (au premier plan) et par un Web Worker
+  // (ci-dessous) : les navigateurs suspendent rAF et ralentissent les
+  // timers des onglets masqués, mais pas les Workers. Sans ça, la partie
+  // entière gèle pour tous les invités dès que l'hôte change d'onglet.
   let lastFrame = 0;
+  let lastStep = 0;
   let accumulator = 0;
   let netTimer = 0;
   let lbTimer = 0;
 
+  function step(now) {
+    if (!running) return;
+    const dtMs = Math.min(250, now - lastStep);
+    if (dtMs <= 0) return;
+    lastStep = now;
+    if (mode === 'host') {
+      accumulator += dtMs;
+      let guard = 0;
+      while (accumulator >= C.TICK_MS && guard++ < 40) {
+        applyLocalInput();
+        world.tick(C.TICK_MS);
+        accumulator -= C.TICK_MS;
+      }
+      if (accumulator >= C.TICK_MS) accumulator = 0; // retard irrattrapable
+      if (hostNet) hostNet.broadcast();
+    } else if (clientNet) {
+      netTimer += dtMs;
+      if (netTimer >= C.NET_MS) {
+        netTimer = 0;
+        sendClientInput();
+      }
+    }
+  }
+
+  const ticker = new Worker(URL.createObjectURL(new Blob(
+    ['setInterval(function () { postMessage(0); }, ' + C.TICK_MS + ');'],
+    { type: 'text/javascript' }
+  )));
+  ticker.onmessage = () => step(performance.now());
+
   function frame(now) {
     rafId = requestAnimationFrame(frame);
     if (!running) return;
+    step(now);
     const dtMs = Math.min(100, now - lastFrame);
     lastFrame = now;
     const dt = dtMs / 1000;
 
     let view, myCells;
     if (mode === 'host') {
-      accumulator += dtMs;
-      while (accumulator >= C.TICK_MS) {
-        applyLocalInput();
-        world.tick(C.TICK_MS);
-        accumulator -= C.TICK_MS;
-      }
       const me = world.players.get(myId);
       myCells = me && !me.dead ? me.cells : [];
       view = {
@@ -214,11 +248,6 @@
       // invité : interpolation vers le dernier snapshot
       view = buildRemoteView(dt);
       myCells = view.myCells;
-      netTimer += dtMs;
-      if (netTimer >= C.NET_MS) {
-        netTimer = 0;
-        sendClientInput();
-      }
       if (remote.latest && now - lbTimer > 500) {
         lbTimer = now;
         updateLeaderboard(remote.latest.lb);
