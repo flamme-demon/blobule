@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blobule — clone open source d'agar.io, sans serveur</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%234da3ff' stroke='%232a6bcc' stroke-width='8'/></svg>">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Menu principal -->
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <h1>Blob<span>ule</span></h1>
+      <p class="tagline">Clone libre d'agar.io — sans serveur, en pair-à-pair.</p>
+
+      <input id="nameInput" type="text" maxlength="16" placeholder="Votre pseudo" autocomplete="off">
+
+      <div class="section">
+        <h2>Créer une partie</h2>
+        <label>Nombre de joueurs
+          <select id="slotsInput">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5" selected>5</option>
+            <option value="6">6</option>
+            <option value="8">8</option>
+            <option value="10">10</option>
+            <option value="12">12</option>
+          </select>
+        </label>
+        <p class="hint">Les places sans humain sont tenues par des IA. Quand un ami
+          rejoint avec votre lien, il remplace une IA.</p>
+        <button id="hostBtn" class="primary">Jouer</button>
+      </div>
+
+      <div class="section">
+        <h2>Rejoindre une partie</h2>
+        <input id="joinInput" type="text" placeholder="Lien ou code d'invitation" autocomplete="off">
+        <button id="joinBtn">Rejoindre</button>
+      </div>
+
+      <p id="menuMsg" class="msg"></p>
+      <p class="controls">Souris : se déplacer · <kbd>Espace</kbd> : se diviser · <kbd>W</kbd> : éjecter de la masse</p>
+    </div>
+  </div>
+
+  <!-- HUD en jeu -->
+  <div id="hud" class="hidden">
+    <div id="leaderboard"></div>
+    <div id="massBar"></div>
+    <div id="inviteBar" class="hidden">
+      <span>Inviter :</span>
+      <input id="inviteLink" type="text" readonly>
+      <button id="copyBtn">Copier</button>
+    </div>
+    <button id="quitBtn" title="Quitter la partie">✕</button>
+  </div>
+
+  <!-- Écran de mort -->
+  <div id="deathOverlay" class="overlay hidden">
+    <div class="panel small">
+      <h2>Vous avez été mangé !</h2>
+      <p id="deathScore"></p>
+      <button id="respawnBtn" class="primary">Réapparaître</button>
+      <button id="deathQuitBtn">Quitter</button>
+    </div>
+  </div>
+
+  <!-- PeerJS (signaling WebRTC). Sans réseau, le jeu reste jouable en solo + IA. -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/sim.js"></script>
+  <script src="js/net.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
