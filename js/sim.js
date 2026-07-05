@@ -429,8 +429,27 @@
           }
           if (shelter) { bot.tx = shelter.x; bot.ty = shelter.y; return; }
         }
-        bot.tx = me.x + (me.x - threat.x) * 3;
-        bot.ty = me.y + (me.y - threat.y) * 3;
+        // fuite consciente des murs : parmi 8 directions, choisir celle qui
+        // éloigne le plus de la menace en restant dans le monde (fuir tout
+        // droit vers un mur = se coincer dans le coin et se faire manger)
+        let bestScore = -Infinity, bestX = me.x, bestY = me.y;
+        for (let k = 0; k < 8; k++) {
+          const a = k * Math.PI / 4;
+          const nx = me.x + Math.cos(a) * 450;
+          const ny = me.y + Math.sin(a) * 450;
+          const cx = Math.max(myR, Math.min(C.WORLD - myR, nx));
+          const cy = Math.max(myR, Math.min(C.WORLD - myR, ny));
+          const score = Math.hypot(cx - threat.x, cy - threat.y)
+            - Math.hypot(cx - nx, cy - ny) * 1.5; // pénalise la part hors monde
+          if (score > bestScore) { bestScore = score; bestX = cx; bestY = cy; }
+        }
+        bot.tx = bestX; bot.ty = bestY;
+        // acculé, menace au contact : split de fuite — la moitié propulsée
+        // vers la sortie s'échappe, quitte à sacrifier l'autre
+        if (bot.cells.length === 1 && me.m >= C.MIN_SPLIT_MASS * 2 &&
+            threatD < C.radius(threat.m) + myR + 100) {
+          bot.wantSplit = true;
+        }
         return;
       }
       // 3) éviter les virus quand on est gros
