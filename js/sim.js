@@ -371,7 +371,6 @@
       const myMass = this.playerMass(bot);
       const myR = C.radius(myMass);
 
-      // 1) fuir les menaces proches
       let threat = null, threatD = Infinity;
       let prey = null, preyD = Infinity;
       for (const other of this.players.values()) {
@@ -386,12 +385,55 @@
           }
         }
       }
+
+      // 1) bombarder : une grosse cellule ennemie campe derrière un virus
+      //    aligné → on nourrit le virus, qui finira par tirer un nouveau
+      //    virus droit sur elle et la faire exploser
+      for (const other of this.players.values()) {
+        if (other.id === bot.id || other.dead) continue;
+        for (const c of other.cells) {
+          if (c.m < C.VIRUS_EXPLODE_MASS) continue;
+          if (myMass > c.m * C.EAT_RATIO) continue; // mangeable : inutile de bombarder
+          for (const v of this.viruses.values()) {
+            // ne s'engage que s'il a la masse pour finir le nourrissage
+            // (7 blobs moins ce que le virus a déjà avalé, marge incluse) —
+            // plusieurs bots peuvent ainsi se relayer sur le même virus
+            const needed = C.VIRUS_FEED_TO_SPLIT - v.fed;
+            if (me.m < C.MIN_EJECT_MASS + C.EJECT_LOSS * (needed + 1)) continue;
+            const dVE = Math.hypot(c.x - v.x, c.y - v.y);
+            // portée du virus tiré (~356 px) + rayon de la cible
+            if (dVE > 300 + C.radius(c.m)) continue;
+            const dMV = Math.hypot(v.x - me.x, v.y - me.y);
+            if (dMV < myR + 40 || dMV > myR + 320) continue; // portée d'éjection
+            // l'ennemi doit être dans le prolongement moi → virus
+            const ux = (v.x - me.x) / dMV, uy = (v.y - me.y) / dMV;
+            const wx = (c.x - v.x) / dVE, wy = (c.y - v.y) / dVE;
+            if (ux * wx + uy * wy < 0.75) continue;
+            bot.tx = v.x; bot.ty = v.y;
+            bot.wantEject = true;
+            return;
+          }
+        }
+      }
+
+      // 2) fuir les menaces — vers un virus si on est assez petit pour
+      //    s'y abriter (un gros poursuivant explosera dessus)
       if (threat) {
+        if (myMass < C.VIRUS_EXPLODE_MASS) {
+          let shelter = null, shelterD = Infinity;
+          for (const v of this.viruses.values()) {
+            const d = Math.hypot(v.x - me.x, v.y - me.y);
+            // le virus doit être grosso modo à l'opposé de la menace
+            const away = (v.x - me.x) * (me.x - threat.x) + (v.y - me.y) * (me.y - threat.y);
+            if (d < 600 && away > 0 && d < shelterD) { shelter = v; shelterD = d; }
+          }
+          if (shelter) { bot.tx = shelter.x; bot.ty = shelter.y; return; }
+        }
         bot.tx = me.x + (me.x - threat.x) * 3;
         bot.ty = me.y + (me.y - threat.y) * 3;
         return;
       }
-      // 2) éviter les virus quand on est gros
+      // 3) éviter les virus quand on est gros
       if (myMass >= C.VIRUS_EXPLODE_MASS) {
         for (const v of this.viruses.values()) {
           const d = Math.hypot(v.x - me.x, v.y - me.y);
@@ -402,7 +444,7 @@
           }
         }
       }
-      // 3) chasser une proie (split occasionnel si gros avantage)
+      // 4) chasser une proie (split occasionnel si gros avantage)
       if (prey) {
         bot.tx = prey.x; bot.ty = prey.y;
         if (bot.cells.length === 1 && me.m > prey.m * 3 &&
@@ -411,7 +453,7 @@
         }
         return;
       }
-      // 4) sinon, la pastille la plus proche
+      // 5) sinon, la pastille la plus proche
       let best = null, bestD = Infinity;
       for (const pel of this.pellets.values()) {
         const d = dist2(pel.x, pel.y, me.x, me.y);
